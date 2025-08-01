@@ -58,6 +58,10 @@
                 <label for="army-list-textarea" class="block text-sm font-medium text-gray-300 mb-1">Egységek listája (Szövegből)</label>
                 <textarea id="army-list-textarea" rows="6" placeholder="Másold ide a sereg listáját..." class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition"></textarea>
             </div>
+            <div class="mb-6">
+                <label for="json-file-input" class="block text-sm font-medium text-gray-300 mb-1">Sereg betöltése .json fájlból</label>
+                <input type="file" id="json-file-input" accept=".json" class="w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-red-600 file:text-white hover:file:bg-red-700 transition">
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button id="start-game-btn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-transform transform hover:scale-105">Játék megkezdése</button>
                 <button id="generate-from-list-btn" class="w-full bg-red-700 text-white font-bold py-2 px-4 rounded-md shadow-md hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 transition-transform transform hover:scale-105">Generálás listából</button>
@@ -103,6 +107,7 @@
             const roundCountInput = document.getElementById('round-count');
             const startGameBtn = document.getElementById('start-game-btn');
             const generateFromListBtn = document.getElementById('generate-from-list-btn');
+            const jsonFileInput = document.getElementById('json-file-input');
             const armyListTextarea = document.getElementById('army-list-textarea');
             const startFromConfigBtn = document.getElementById('start-game-from-config-btn');
             const resetTurnBtn = document.getElementById('reset-turn-btn');
@@ -128,10 +133,11 @@
                     card.dataset.id = unit.id;
 
                     let nameInputHtml = '';
-                    if (armyListTextarea.value.trim() === '') {
-                        nameInputHtml = `<input type="text" data-action="set-name" value="${unit.name}" class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md shadow-sm text-white placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition mb-3">`;
-                    } else {
+                    // Check if the list was generated from the textarea or json, otherwise assume manual input
+                    if (armyListTextarea.value.trim() !== '' || jsonFileInput.files.length > 0) {
                         nameInputHtml = `<h3 class="text-xl font-bold text-white mb-3">${unit.name}</h3>`;
+                    } else {
+                        nameInputHtml = `<input type="text" data-action="set-name" value="${unit.name}" class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md shadow-sm text-white placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition mb-3">`;
                     }
 
                     card.innerHTML = `
@@ -152,6 +158,10 @@
                             <label class="inline-flex items-center text-gray-300">
                                 <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-config-tough" ${unit.isTough ? 'checked' : ''}>
                                 <span class="ml-2">Tough</span>
+                            </label>
+                            <label class="inline-flex items-center text-gray-300">
+                                <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-config-assault" ${unit.hasAssault ? 'checked' : ''}>
+                                <span class="ml-2">Assault</span>
                             </label>
                         </div>
                     `;
@@ -179,6 +189,9 @@
                             break;
                         case 'toggle-config-tough':
                             unit.isTough = target.checked;
+                            break;
+                        case 'toggle-config-assault':
+                            unit.hasAssault = target.checked;
                             break;
                     }
                 });
@@ -214,8 +227,12 @@
                     card.dataset.id = unit.id;
 
                     const isActivatedAndNotFinished = unit.activated && !unit.isFinished && !isOutOfAction;
+                    // Disable Ranged if: not active, already used, or in melee combat
                     const isRangedDisabled = !isActivatedAndNotFinished || unit.hasRangedAttacked || unit.inMeleeCombat || !unit.rangedEnabled;
-                    const isChargeDisabled = !isActivatedAndNotFinished || unit.hasCharged || unit.hasRangedAttacked || unit.inMeleeCombat;
+                    
+                    // Disable Charge if: not active, already used, in melee combat, OR (ranged attack performed AND unit does NOT have Assault ability)
+                    const isChargeDisabled = !isActivatedAndNotFinished || (unit.hasRangedAttacked && !unit.hasAssault) || unit.hasCharged || unit.inMeleeCombat;
+                    
                     const isMeleeDisabled = !isActivatedAndNotFinished || !unit.meleeEnabled || unit.meleeAttacksLeft === 0;
                     const isMoveDisabled = !isActivatedAndNotFinished || unit.moved;
                     const isDashDisabled = !isActivatedAndNotFinished || unit.dashed || unit.inMeleeCombat;
@@ -330,6 +347,7 @@
                                 offHandEnabled: false,
                                 rangedEnabled: false,
                                 isTough: false,
+                                hasAssault: false,
                                 meleeAttacksLeft: 1,
                                 ooaMarkers: 0
                             });
@@ -354,6 +372,114 @@
                 }
             };
             
+            const parseJsonFile = (file) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const armyData = JSON.parse(event.target.result);
+                        const parsedUnits = [];
+                        const selections = armyData?.roster?.forces?.[0]?.selections?.[0]?.selections;
+                        
+                        if (!selections || !Array.isArray(selections)) {
+                            alert('Hiba a fájl feldolgozásakor: Helytelen JSON formátum.');
+                            return;
+                        }
+
+                        selections.forEach(unitData => {
+                            const unitName = unitData?.name || 'Ismeretlen Egység';
+                            let isTough = false;
+                            let hasAssault = false;
+                            let meleeEnabled = false;
+                            let rangedEnabled = false;
+
+                            // Check for Tough ability
+                            if (unitData.profiles && unitData.profiles.some(profile => profile.name === 'Tough')) {
+                                isTough = true;
+                            }
+
+                            // Check for Assault characteristic
+                            // The provided JSON file has the 'Assault' keyword within the characteristics of equipment.
+                            // We need to check all profiles within the unit's selections.
+                            if (unitData.selections) {
+                                unitData.selections.forEach(item => {
+                                    if (item.profiles) {
+                                        item.profiles.forEach(profile => {
+                                            if (profile.characteristics) {
+                                                profile.characteristics.forEach(char => {
+                                                    if (char.name === 'Kulcsszavak' && char['$text'] && char['$text'].includes('Assault')) {
+                                                        hasAssault = true;
+                                                    }
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+                            }
+                            
+                            // Check for different weapon types to enable abilities
+                            if (unitData.selections) {
+                                unitData.selections.forEach(item => {
+                                    if (item.profiles) {
+                                        item.profiles.forEach(profile => {
+                                            if (profile.typeName === 'Weapon') {
+                                                if (profile.name.includes('One-Handed') || profile.name.includes('Two-Handed') || profile.name.includes('Hammer')) {
+                                                    meleeEnabled = true;
+                                                }
+                                                if (profile.name.includes('Rifle') || profile.name.includes('Gun') || profile.name.includes('Grenades')) {
+                                                    rangedEnabled = true;
+                                                }
+                                            }
+                                        });
+                                    }
+                                });
+                            }
+
+                            parsedUnits.push({
+                                id: nextId++,
+                                name: unitName,
+                                bloodMarkers: 0,
+                                activated: false,
+                                moved: false,
+                                dashed: false,
+                                hasMeleeAttacked: false,
+                                hasRangedAttacked: false,
+                                hasCharged: false,
+                                inMeleeCombat: false,
+                                isFinished: false,
+                                meleeEnabled: meleeEnabled,
+                                offHandEnabled: false,
+                                rangedEnabled: rangedEnabled,
+                                isTough: isTough,
+                                hasAssault: hasAssault,
+                                meleeAttacksLeft: 1,
+                                ooaMarkers: 0
+                            });
+                        });
+                        
+                        if (parsedUnits.length > 0) {
+                            units = parsedUnits;
+                            totalUnits = units.length;
+                            totalRounds = parseInt(roundCountInput.value, 10);
+                            if (totalRounds > 0) {
+                                currentRound = 1;
+                                setupContainer.classList.add('hidden');
+                                configContainer.classList.remove('hidden');
+                                renderUnitConfiguration();
+                            } else {
+                                alert('Kérlek adj meg pozitív számot a körök számára.');
+                            }
+                        } else {
+                            alert('Nem találtam egységeket a JSON fájlban. Kérlek ellenőrizd a formátumot.');
+                        }
+
+                    } catch (e) {
+                        console.error(e);
+                        alert('Hiba a JSON fájl feldolgozása közben. Kérlek ellenőrizd a fájl formátumát.');
+                    }
+                };
+                reader.readAsText(file);
+            };
+
             const startGame = () => {
                 if (armyListTextarea.value.trim() !== '') {
                     parseArmyList();
@@ -381,6 +507,7 @@
                             offHandEnabled: false,
                             rangedEnabled: true,
                             isTough: false,
+                            hasAssault: false,
                             meleeAttacksLeft: 1,
                             ooaMarkers: 0
                         });
@@ -568,6 +695,7 @@
                 unitCountInput.value = '3';
                 roundCountInput.value = '4';
                 armyListTextarea.value = '';
+                jsonFileInput.value = ''; // Reset file input
                 renderUnits();
             };
 
@@ -583,6 +711,12 @@
             bonusRoundBtn.addEventListener('click', startBonusRound);
             finalEndGameBtn.addEventListener('click', () => endGameFlow());
             newGameBtn.addEventListener('click', startNewGame);
+            jsonFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    parseJsonFile(file);
+                }
+            });
 
             renderUnits();
         });
