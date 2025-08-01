@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trench Crusade Akciókövető</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Dark with Red and White -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .action-button {
+            transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, opacity 0.2s ease-in-out;
+            border: 1px solid transparent;
+        }
+        .action-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            background-color: #4b5563; /* gray-600 */
+            border-color: #374151; /* gray-700 */
+        }
+        .status-indicator {
+            transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+        }
+        .out-of-action-card {
+            filter: grayscale(80%) opacity(0.5);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+
+    <div class="container mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
+        
+        <header class="text-center mb-8">
+            <h1 class="text-4xl sm:text-5xl font-bold text-white">Trench Crusade Akciókövető</h1>
+            <p class="text-gray-400 mt-2">Kezeld az egységeid akcióit és állapotát a csata során.</p>
+        </header>
+
+        <!-- Setup Container -->
+        <div id="setup-container" class="bg-gray-800/80 backdrop-blur-sm shadow-lg rounded-xl p-6 mb-8">
+            <h2 class="text-2xl font-bold text-white mb-4">Játék beállítások</h2>
+            <div class="grid sm:grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="unit-count" class="block text-sm font-medium text-gray-300 mb-1">Egységek száma (Manuális)</label>
+                    <input type="number" id="unit-count" value="3" min="1" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition">
+                </div>
+                <div>
+                    <label for="round-count" class="block text-sm font-medium text-gray-300 mb-1">Körök száma</label>
+                    <input type="number" id="round-count" value="4" min="1" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition">
+                </div>
+            </div>
+            <div class="mb-6">
+                <label for="army-list-textarea" class="block text-sm font-medium text-gray-300 mb-1">Egységek listája (Szövegből)</label>
+                <textarea id="army-list-textarea" rows="6" placeholder="Másold ide a sereg listáját..." class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md shadow-sm text-white placeholder-gray-500 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition"></textarea>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button id="start-game-btn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-transform transform hover:scale-105">Játék megkezdése</button>
+                <button id="generate-from-list-btn" class="w-full bg-red-700 text-white font-bold py-2 px-4 rounded-md shadow-md hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 transition-transform transform hover:scale-105">Generálás listából</button>
+            </div>
+        </div>
+
+        <!-- Configuration Container -->
+        <div id="config-container" class="hidden bg-gray-800/80 backdrop-blur-sm shadow-lg rounded-xl p-6 mb-8">
+            <h2 class="text-2xl font-bold text-white mb-4">Egység konfiguráció</h2>
+            <p class="text-gray-400 mb-6">Állítsd be az egyes egységek képességeit a játék megkezdése előtt.</p>
+            <div id="config-units-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            <button id="start-game-from-config-btn" class="w-full mt-6 bg-red-600 text-white font-bold py-2 px-4 rounded-md shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-transform transform hover:scale-105">Játék indítása</button>
+        </div>
+
+        <!-- Game Container -->
+        <div id="game-container" class="hidden">
+            <div id="game-controls" class="bg-gray-800/80 backdrop-blur-sm shadow-lg rounded-xl p-6 mb-8 sticky top-4 z-10 flex flex-col md:flex-row items-center justify-between">
+                <p id="round-info" class="text-xl font-bold text-white mb-4 md:mb-0"></p>
+                <button id="reset-turn-btn" class="w-full md:w-auto bg-red-800 text-white font-bold py-2 px-6 rounded-md shadow-md hover:bg-red-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-700 transition-transform transform hover:scale-scale-105">Kör Vége / Reset</button>
+            </div>
+            <main id="units-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></main>
+        </div>
+
+        <!-- End Game Container -->
+        <div id="end-game-container" class="hidden text-center p-10">
+            <p id="end-game-message" class="text-2xl font-bold text-white mb-6">A játék véget ért!</p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button id="bonus-round-btn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-md shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-transform transform hover:scale-105">Ráadás kör</button>
+                <button id="final-end-game-btn" class="w-full bg-red-800 text-white font-bold py-2 px-4 rounded-md shadow-md hover:bg-red-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-700 transition-transform transform hover:scale-105">Játék vége</button>
+                <button id="new-game-btn" class="w-full bg-gray-600 text-white font-bold py-2 px-4 rounded-md shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-transform transform hover:scale-105">Új játék</button>
+            </div>
+        </div>
+        
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const setupContainer = document.getElementById('setup-container');
+            const configContainer = document.getElementById('config-container');
+            const gameContainer = document.getElementById('game-container');
+            const endGameStateContainer = document.getElementById('end-game-container');
+            const unitCountInput = document.getElementById('unit-count');
+            const roundCountInput = document.getElementById('round-count');
+            const startGameBtn = document.getElementById('start-game-btn');
+            const generateFromListBtn = document.getElementById('generate-from-list-btn');
+            const armyListTextarea = document.getElementById('army-list-textarea');
+            const startFromConfigBtn = document.getElementById('start-game-from-config-btn');
+            const resetTurnBtn = document.getElementById('reset-turn-btn');
+            const bonusRoundBtn = document.getElementById('bonus-round-btn');
+            const finalEndGameBtn = document.getElementById('final-end-game-btn');
+            const newGameBtn = document.getElementById('new-game-btn');
+            const unitsContainer = document.getElementById('units-container');
+            const configUnitsContainer = document.getElementById('config-units-container');
+            const roundInfo = document.getElementById('round-info');
+            const endGameMessage = document.getElementById('end-game-message');
+
+            let units = [];
+            let nextId = 0;
+            let totalRounds = 0;
+            let currentRound = 1;
+            let totalUnits = 0;
+
+            const renderUnitConfiguration = () => {
+                configUnitsContainer.innerHTML = '';
+                units.forEach(unit => {
+                    const card = document.createElement('div');
+                    card.className = `bg-gray-700 shadow-lg rounded-xl p-4 flex flex-col border-t-4 border-gray-600`;
+                    card.dataset.id = unit.id;
+
+                    let nameInputHtml = '';
+                    if (armyListTextarea.value.trim() === '') {
+                        nameInputHtml = `<input type="text" data-action="set-name" value="${unit.name}" class="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-md shadow-sm text-white placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition mb-3">`;
+                    } else {
+                        nameInputHtml = `<h3 class="text-xl font-bold text-white mb-3">${unit.name}</h3>`;
+                    }
+
+                    card.innerHTML = `
+                        ${nameInputHtml}
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <label class="inline-flex items-center text-gray-300">
+                                <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-config-melee" ${unit.meleeEnabled ? 'checked' : ''}>
+                                <span class="ml-2">Meele</span>
+                            </label>
+                            <label class="inline-flex items-center text-gray-300">
+                                <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-config-offhand" ${unit.offHandEnabled ? 'checked' : ''}>
+                                <span class="ml-2">Off-hand</span>
+                            </label>
+                            <label class="inline-flex items-center text-gray-300">
+                                <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-config-ranged" ${unit.rangedEnabled ? 'checked' : ''}>
+                                <span class="ml-2">Ranged</span>
+                            </label>
+                            <label class="inline-flex items-center text-gray-300">
+                                <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-config-tough" ${unit.isTough ? 'checked' : ''}>
+                                <span class="ml-2">Tough</span>
+                            </label>
+                        </div>
+                    `;
+                    configUnitsContainer.appendChild(card);
+                });
+
+                configUnitsContainer.addEventListener('change', (e) => {
+                    const target = e.target;
+                    const card = target.closest('[data-id]');
+                    if (!card) return;
+
+                    const id = parseInt(card.dataset.id, 10);
+                    const unit = units.find(u => u.id === id);
+                    if (!unit) return;
+
+                    switch (target.dataset.action) {
+                        case 'toggle-config-melee':
+                            unit.meleeEnabled = target.checked;
+                            break;
+                        case 'toggle-config-offhand':
+                            unit.offHandEnabled = target.checked;
+                            break;
+                        case 'toggle-config-ranged':
+                            unit.rangedEnabled = target.checked;
+                            break;
+                        case 'toggle-config-tough':
+                            unit.isTough = target.checked;
+                            break;
+                    }
+                });
+
+                configUnitsContainer.addEventListener('input', (e) => {
+                    const target = e.target;
+                    if (target.dataset.action === 'set-name') {
+                        const card = target.closest('[data-id]');
+                        const id = parseInt(card.dataset.id, 10);
+                        const unit = units.find(u => u.id === id);
+                        if (unit) {
+                            unit.name = target.value;
+                        }
+                    }
+                });
+            };
+
+            const renderUnits = () => {
+                unitsContainer.innerHTML = '';
+                if (units.length === 0) {
+                    unitsContainer.innerHTML = `
+                        <div class="col-span-full text-center p-10 border-2 border-dashed border-gray-700 rounded-xl">
+                            <p class="text-gray-500">Még nincsenek egységek a csatatéren.</p>
+                            <p class="text-gray-600 text-sm">Adj hozzá egyet a fenti űrlappal a kezdéshez!</p>
+                        </div>
+                    `;
+                    return;
+                }
+                units.forEach(unit => {
+                    const isOutOfAction = unit.isTough ? unit.ooaMarkers === 2 : unit.ooaMarkers === 1;
+                    const card = document.createElement('div');
+                    card.className = `bg-gray-800 shadow-lg rounded-xl p-5 flex flex-col border-t-4 ${unit.activated ? 'border-red-500' : 'border-gray-700'} transition-all ${isOutOfAction ? 'out-of-action-card' : (unit.isFinished ? 'opacity-50' : '')}`;
+                    card.dataset.id = unit.id;
+
+                    const isActivatedAndNotFinished = unit.activated && !unit.isFinished && !isOutOfAction;
+                    const isRangedDisabled = !isActivatedAndNotFinished || unit.hasRangedAttacked || unit.inMeleeCombat || !unit.rangedEnabled;
+                    const isChargeDisabled = !isActivatedAndNotFinished || unit.hasCharged || unit.hasRangedAttacked || unit.inMeleeCombat;
+                    const isMeleeDisabled = !isActivatedAndNotFinished || !unit.meleeEnabled || unit.meleeAttacksLeft === 0;
+                    const isMoveDisabled = !isActivatedAndNotFinished || unit.moved;
+                    const isDashDisabled = !isActivatedAndNotFinished || unit.dashed || unit.inMeleeCombat;
+                    const moveButtonText = unit.inMeleeCombat ? 'Retreat' : 'Mozgás';
+                    const meleeCounterText = unit.offHandEnabled ? ` (${unit.meleeAttacksLeft}/${unit.offHandEnabled ? 2 : 1})` : '';
+
+                    let ooaCheckboxes = '';
+                    if (unit.isTough) {
+                        ooaCheckboxes = `
+                            <div class="flex items-center gap-2">
+                                <label class="inline-flex items-center text-gray-300">
+                                    <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-ooa" data-ooa-index="0" ${unit.ooaMarkers > 0 ? 'checked' : ''} ${isOutOfAction ? 'disabled' : ''}>
+                                    <span class="ml-2 text-sm">OOA 1</span>
+                                </label>
+                                <label class="inline-flex items-center text-gray-300">
+                                    <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-ooa" data-ooa-index="1" ${unit.ooaMarkers > 1 ? 'checked' : ''} ${unit.ooaMarkers < 1 || isOutOfAction ? 'disabled' : ''}>
+                                    <span class="ml-2 text-sm">OOA 2</span>
+                                </label>
+                            </div>
+                        `;
+                    } else {
+                        ooaCheckboxes = `
+                            <label class="inline-flex items-center text-gray-300">
+                                <input type="checkbox" class="form-checkbox h-5 w-5 text-red-600 bg-gray-600 border-gray-500 rounded focus:ring-red-500 transition" data-action="toggle-ooa" data-ooa-index="0" ${unit.ooaMarkers > 0 ? 'checked' : ''} ${isOutOfAction ? 'disabled' : ''}>
+                                <span class="ml-2 text-sm">OOA</span>
+                            </label>
+                        `;
+                    }
+
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-4">
+                            <h2 class="text-2xl font-bold text-white">${unit.name}</h2>
+                            <button data-action="remove" class="text-gray-400 hover:text-red-500 font-bold text-2xl leading-none" ${isOutOfAction ? 'disabled' : ''}>&times;</button>
+                        </div>
+                        <div class="flex justify-between items-center bg-gray-700 rounded-md p-2 mb-4">
+                            <span class="font-semibold text-gray-300">Blood Markers:</span>
+                            <div class="flex items-center gap-3">
+                                <button data-action="wound-minus" class="bg-gray-600 hover:bg-gray-500 text-white rounded-full w-8 h-8 font-bold text-lg transition" ${isOutOfAction ? 'disabled' : ''}>-</button>
+                                <span class="text-xl font-bold w-6 text-center text-white">${unit.bloodMarkers}</span>
+                                <button data-action="wound-plus" class="bg-gray-600 hover:bg-gray-500 text-white rounded-full w-8 h-8 font-bold text-lg transition" ${unit.bloodMarkers >= 6 || isOutOfAction ? 'disabled' : ''}>+</button>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between p-2 mb-4 bg-gray-700 rounded-md">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" data-action="toggle-in-melee-combat" class="sr-only peer" ${unit.inMeleeCombat ? 'checked' : ''} ${isOutOfAction ? 'disabled' : ''}>
+                                <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                                <span class="ml-3 text-sm font-medium text-gray-300">in meele combat</span>
+                            </label>
+                            ${ooaCheckboxes}
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-3 flex-grow">
+                            <button data-action="toggle-activated" class="action-button p-2 rounded-md font-semibold ${unit.activated ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}" ${isOutOfAction ? 'disabled' : ''}>
+                                ${unit.activated ? '✓ Aktiválva' : 'Aktiválás'}
+                            </button>
+                            <button data-action="toggle-moved" class="action-button p-2 rounded-md font-semibold ${unit.moved ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}" ${isMoveDisabled ? 'disabled' : ''}>
+                                ${unit.moved ? `✓ ${moveButtonText}` : moveButtonText}
+                            </button>
+                            <button data-action="toggle-dashed" class="action-button p-2 rounded-md font-semibold ${unit.dashed ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}" ${isDashDisabled ? 'disabled' : ''}>
+                                ${unit.dashed ? '✓ Dash' : 'Dash'}
+                            </button>
+                            <button data-action="toggle-melee" class="action-button p-2 rounded-md font-semibold ${unit.hasMeleeAttacked ? 'bg-red-700 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}" ${isMeleeDisabled ? 'disabled' : ''}>
+                                ${unit.hasMeleeAttacked ? `✓ Melee${meleeCounterText}` : `Melee${meleeCounterText}`}
+                            </button>
+                            <button data-action="toggle-ranged" class="action-button p-2 rounded-md font-semibold ${unit.hasRangedAttacked ? 'bg-red-700 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}" ${isRangedDisabled ? 'disabled' : ''}>
+                                ${unit.hasRangedAttacked ? '✓ Ranged' : 'Ranged'}
+                            </button>
+                            <button data-action="toggle-charge" class="action-button p-2 rounded-md font-semibold ${unit.hasCharged ? 'bg-red-900 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}" ${isChargeDisabled ? 'disabled' : ''}>
+                                ${unit.hasCharged ? '✓ Charge' : 'Charge'}
+                            </button>
+                            <button data-action="finish-activation" class="col-span-2 action-button p-2 rounded-md font-semibold ${unit.isFinished ? 'bg-gray-500 text-gray-300' : 'bg-red-900 text-white hover:bg-red-800'}" ${!unit.activated || unit.isFinished || isOutOfAction ? 'disabled' : ''}>
+                                ${unit.isFinished ? 'Aktiválás befejezve' : 'Aktiválás befejezése'}
+                            </button>
+                        </div>
+                    `;
+                    unitsContainer.appendChild(card);
+                });
+            };
+
+            const parseArmyList = () => {
+                const listText = armyListTextarea.value;
+                const lines = listText.split('\n');
+                const parsedUnits = [];
+                const unitPattern = /^\s*([^#].+)\s*\[\d+\s*Ducats\]\s*[:]?/; 
+                
+                let inUnitListSection = false;
+
+                lines.forEach(line => {
+                    if (line.trim().startsWith('##')) {
+                        inUnitListSection = true;
+                        return;
+                    }
+
+                    if (inUnitListSection) {
+                        const match = line.match(unitPattern);
+                        if (match) {
+                            const unitName = match[1].trim();
+                            parsedUnits.push({
+                                id: nextId++,
+                                name: unitName,
+                                bloodMarkers: 0,
+                                activated: false,
+                                moved: false,
+                                dashed: false,
+                                hasMeleeAttacked: false,
+                                hasRangedAttacked: false,
+                                hasCharged: false,
+                                inMeleeCombat: false,
+                                isFinished: false,
+                                meleeEnabled: false,
+                                offHandEnabled: false,
+                                rangedEnabled: false,
+                                isTough: false,
+                                meleeAttacksLeft: 1,
+                                ooaMarkers: 0
+                            });
+                        }
+                    }
+                });
+
+                if (parsedUnits.length > 0) {
+                    units = parsedUnits;
+                    totalUnits = units.length;
+                    totalRounds = parseInt(roundCountInput.value, 10);
+                    if (totalRounds > 0) {
+                        currentRound = 1;
+                        setupContainer.classList.add('hidden');
+                        configContainer.classList.remove('hidden');
+                        renderUnitConfiguration();
+                    } else {
+                        alert('Kérlek adj meg pozitív számot a körök számára.');
+                    }
+                } else {
+                    alert('Nem találtam egységeket a megadott listában. Kérlek ellenőrizd a formátumot.');
+                }
+            };
+            
+            const startGame = () => {
+                if (armyListTextarea.value.trim() !== '') {
+                    parseArmyList();
+                    return;
+                }
+                
+                totalUnits = parseInt(unitCountInput.value, 10);
+                totalRounds = parseInt(roundCountInput.value, 10);
+                if (totalUnits > 0 && totalRounds > 0) {
+                    units = [];
+                    for (let i = 0; i < totalUnits; i++) {
+                        units.push({
+                            id: nextId++,
+                            name: `Egység ${i + 1}`,
+                            bloodMarkers: 0,
+                            activated: false,
+                            moved: false,
+                            dashed: false,
+                            hasMeleeAttacked: false,
+                            hasRangedAttacked: false,
+                            hasCharged: false,
+                            inMeleeCombat: false,
+                            isFinished: false,
+                            meleeEnabled: true,
+                            offHandEnabled: false,
+                            rangedEnabled: true,
+                            isTough: false,
+                            meleeAttacksLeft: 1,
+                            ooaMarkers: 0
+                        });
+                    }
+                    currentRound = 1;
+                    setupContainer.classList.add('hidden');
+                    configContainer.classList.remove('hidden');
+                    renderUnitConfiguration();
+                } else {
+                    alert('Kérlek adj meg pozitív számot az egységek és a körök számára.');
+                }
+            };
+
+            const startGameFromConfig = () => {
+                units.forEach(unit => {
+                    unit.meleeAttacksLeft = unit.offHandEnabled ? 2 : 1;
+                });
+                configContainer.classList.add('hidden');
+                gameContainer.classList.remove('hidden');
+                updateRoundInfo();
+                renderUnits();
+            };
+            
+            const isUnitOutOfAction = (unit) => {
+                const maxOoa = unit.isTough ? 2 : 1;
+                return unit.ooaMarkers >= maxOoa;
+            };
+
+            const checkGameOver = () => {
+                const allUnitsOutOfAction = units.every(isUnitOutOfAction);
+                if (allUnitsOutOfAction) {
+                    endGameFlow('Az összes egység kiállt a játékból! A játéknak vége.');
+                }
+            };
+
+            const handleUnitAction = (e) => {
+                const target = e.target.closest('[data-action]');
+                if (!target) return;
+
+                const card = target.closest('[data-id]');
+                if (!card) return;
+
+                const id = parseInt(card.dataset.id, 10);
+                const unit = units.find(u => u.id === id);
+                if (!unit) return;
+
+                const action = target.dataset.action;
+                
+                switch (action) {
+                    case 'remove':
+                        units = units.filter(u => u.id !== id);
+                        break;
+                    case 'wound-plus':
+                        if (unit.bloodMarkers < 6) unit.bloodMarkers++;
+                        break;
+                    case 'wound-minus':
+                        if (unit.bloodMarkers > 0) unit.bloodMarkers--;
+                        break;
+                    case 'toggle-activated':
+                        unit.activated = !unit.activated;
+                        break;
+                    case 'toggle-moved':
+                        unit.moved = !unit.moved;
+                        break;
+                    case 'toggle-dashed':
+                        unit.dashed = !unit.dashed;
+                        break;
+                    case 'toggle-melee':
+                        if (unit.meleeAttacksLeft > 0) {
+                            unit.hasMeleeAttacked = true;
+                            unit.meleeAttacksLeft--;
+                            if (unit.meleeAttacksLeft === 0) {
+                                target.disabled = true;
+                            }
+                        }
+                        break;
+                    case 'toggle-ranged':
+                        unit.hasRangedAttacked = !unit.hasRangedAttacked;
+                        break;
+                    case 'toggle-charge':
+                        unit.hasCharged = !unit.hasCharged;
+                        if (unit.hasCharged) {
+                          unit.moved = true;
+                        }
+                        break;
+                    case 'toggle-in-melee-combat':
+                        unit.inMeleeCombat = target.checked;
+                        if (unit.inMeleeCombat) {
+                            unit.hasRangedAttacked = false;
+                            unit.dashed = false;
+                        }
+                        break;
+                    case 'toggle-ooa':
+                        if (unit.isTough) {
+                            const ooaIndex = parseInt(target.dataset.ooaIndex, 10);
+                            if (target.checked) {
+                                unit.ooaMarkers = Math.max(unit.ooaMarkers, ooaIndex + 1);
+                            } else {
+                                // If unchecking the second box, also uncheck the first
+                                if (ooaIndex === 1) {
+                                    unit.ooaMarkers = 1;
+                                } else {
+                                    unit.ooaMarkers = 0;
+                                }
+                            }
+                        } else {
+                            unit.ooaMarkers = target.checked ? 1 : 0;
+                        }
+                        break;
+                    case 'finish-activation':
+                        if (unit.activated) {
+                            unit.isFinished = true;
+                        }
+                        break;
+                }
+                
+                checkGameOver();
+                renderUnits();
+            };
+
+            const resetTurn = () => {
+                units.forEach(unit => {
+                    unit.activated = false;
+                    unit.moved = false;
+                    unit.dashed = false;
+                    unit.hasMeleeAttacked = false;
+                    unit.hasRangedAttacked = false;
+                    unit.hasCharged = false;
+                    unit.isFinished = false;
+                    unit.meleeAttacksLeft = unit.offHandEnabled ? 2 : 1;
+                });
+                currentRound++;
+                updateRoundInfo();
+                if (currentRound > totalRounds) {
+                    endGameFlow();
+                } else {
+                    renderUnits();
+                }
+            };
+
+            const endGameFlow = (message = 'A játék véget ért!') => {
+                gameContainer.classList.add('hidden');
+                endGameStateContainer.classList.remove('hidden');
+                endGameMessage.textContent = message;
+                bonusRoundBtn.classList.remove('hidden');
+                finalEndGameBtn.classList.remove('hidden');
+            };
+
+            const startBonusRound = () => {
+                totalRounds++;
+                currentRound = totalRounds;
+                units.forEach(unit => {
+                    unit.activated = false;
+                    unit.moved = false;
+                    unit.dashed = false;
+                    unit.hasMeleeAttacked = false;
+                    unit.hasRangedAttacked = false;
+                    unit.hasCharged = false;
+                    unit.isFinished = false;
+                    unit.meleeAttacksLeft = unit.offHandEnabled ? 2 : 1;
+                    unit.ooaMarkers = 0;
+                });
+                endGameStateContainer.classList.add('hidden');
+                gameContainer.classList.remove('hidden');
+                updateRoundInfo();
+                renderUnits();
+                resetTurnBtn.onclick = () => {
+                    endGameFlow();
+                    endGameMessage.textContent = 'Ráadás kör befejezve. A játéknak vége.';
+                    bonusRoundBtn.classList.add('hidden');
+                    finalEndGameBtn.classList.remove('hidden');
+                };
+            };
+            
+            const startNewGame = () => {
+                units = [];
+                nextId = 0;
+                totalRounds = 0;
+                currentRound = 1;
+                totalUnits = 0;
+                endGameStateContainer.classList.add('hidden');
+                gameContainer.classList.add('hidden');
+                configContainer.classList.add('hidden');
+                setupContainer.classList.remove('hidden');
+                unitCountInput.value = '3';
+                roundCountInput.value = '4';
+                armyListTextarea.value = '';
+                renderUnits();
+            };
+
+            const updateRoundInfo = () => {
+                roundInfo.textContent = `Kör ${currentRound} / ${totalRounds}`;
+            };
+            
+            startGameBtn.addEventListener('click', startGame);
+            generateFromListBtn.addEventListener('click', parseArmyList);
+            startFromConfigBtn.addEventListener('click', startGameFromConfig);
+            resetTurnBtn.addEventListener('click', resetTurn);
+            unitsContainer.addEventListener('click', handleUnitAction);
+            bonusRoundBtn.addEventListener('click', startBonusRound);
+            finalEndGameBtn.addEventListener('click', () => endGameFlow());
+            newGameBtn.addEventListener('click', startNewGame);
+
+            renderUnits();
+        });
+    </script>
+
+</body>
+</html>
